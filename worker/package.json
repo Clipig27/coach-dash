@@ -1,0 +1,7 @@
+{
+  "name": "coach-dash-worker",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node send-worker.mjs" }
+}

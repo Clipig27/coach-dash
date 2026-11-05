@@ -1,0 +1,56 @@
+[
+  {
+    "id": "2026-11-05:nicole-matto",
+    "date": "2026-11-05",
+    "creator": "Nicole Matto",
+    "channel": "nicole-matto",
+    "trigger": "no reply 16h",
+    "summary": "asked about warmup feed check two days ago, went quiet after. 0 posts yesterday.",
+    "draft": "yo u still with me? where we at on the feed check, send the screen recording when u can",
+    "flags": [],
+    "tab": "respond_now",
+    "approved": false,
+    "sent": false
+  },
+  {
+    "id": "2026-11-05:allen-tumbapo",
+    "date": "2026-11-05",
+    "creator": "Allen Tumbapo",
+    "channel": "allen-tumbapo",
+    "trigger": "0 posts yesterday",
+    "summary": "new creator, posted once this week, hasn't hit 1k yet. said he was busy with school.",
+    "draft": "hey what posts u getting out today? 1 a day keeps the account warm, lmk if ur stuck on a format",
+    "flags": [],
+    "tab": "missed_yesterday",
+    "approved": false,
+    "sent": false
+  },
+  {
+    "id": "2026-11-05:cyrus-zhang",
+    "date": "2026-11-05",
+    "creator": "Cyrus Zhang",
+    "channel": "cyrus-zhang",
+    "trigger": "asked about payout math",
+    "summary": "asked when the next payout batch covers his Oct 28 video. PAY QUESTION, answer yourself.",
+    "draft": "",
+    "flags": [
+      "pay_question"
+    ],
+    "tab": "needs_you_first",
+    "approved": false,
+    "sent": false
+  },
+  {
+    "id": "2026-11-05:gustavo-otero",
+    "date": "2026-11-05",
+    "creator": "Gustavo Otero",
+    "channel": "gustavo-otero",
+    "trigger": "under 10% virality 2 wks",
+    "summary": "posting daily but all videos under 2k. hasn't booked a 1:1 in 3 weeks.",
+    "draft": "yo lets get a 1:1 on the books this week, i wanna look at ur hooks before friday. link is pinned",
+    "flags": [],
+    "tab": "at_risk",
+    "approved": false,
+    "sent": false
+  }
+]

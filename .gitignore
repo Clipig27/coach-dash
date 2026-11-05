@@ -1,0 +1,6 @@
+.next
+node_modules
+data/approved_sends.json
+.config-snapshot
+.env*
+.DS_Store

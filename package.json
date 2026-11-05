@@ -1,0 +1,24 @@
+{
+  "name": "coach-dash",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "node scripts/config-sync.mjs snapshot && next build",
+    "start": "node scripts/config-sync.mjs restore && next start"
+  },
+  "dependencies": {
+    "next": "14.2.35",
+    "papaparse": "5.4.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "@types/react": "18.3.3",
+    "typescript": "5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
