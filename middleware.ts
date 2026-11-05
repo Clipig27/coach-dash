@@ -6,8 +6,8 @@ export function middleware(req: NextRequest) {
   const token = process.env.ADMIN_TOKEN;
   if (!token) return NextResponse.next(); // no token set = local dev, open
 
-  // worker endpoint has its own WORKER_TOKEN check
-  if (req.nextUrl.pathname.startsWith("/api/approved-sends")) return NextResponse.next();
+  // worker + bot endpoints check their own WORKER_TOKEN / INGEST_TOKEN
+  if (/^\/api\/(approved-sends|ingest)(\/|$)/.test(req.nextUrl.pathname)) return NextResponse.next();
 
   if (req.nextUrl.searchParams.get("token") === token) {
     const res = NextResponse.next();

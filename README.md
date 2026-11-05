@@ -48,7 +48,7 @@ One repo, two services in one Railway project.
 - Build `npm run build`, start `npm start` (Railway sets `PORT`).
 - Volume mounted at `/app/data`. Drafts, the send queue, LP/ranking CSVs and goals live there.
 - `roster.md` + `discord_channel_order.md` come from the repo and are copied onto the volume on every start, so edit them here and redeploy.
-- Vars: `ADMIN_TOKEN`, `WORKER_TOKEN`. Leave `KV_REST_API_*` unset.
+- Vars: `ADMIN_TOKEN`, `WORKER_TOKEN`, `INGEST_TOKEN`. Leave `KV_REST_API_*` unset.
 - Open `https://<web-domain>/?token=ADMIN_TOKEN` once per browser; it sets a 90-day cookie. Everything else returns 401.
 
 **worker** (root directory `worker`)
@@ -72,6 +72,20 @@ WORKER_TOKEN=... \
 DISCORD_BOT_TOKEN=... \
 node send-worker.mjs
 ```
+
+## Grok Bot ingest
+
+After the 8am ET run, Grok Bot uploads each file with `INGEST_TOKEN` (write-only, it can't approve or send):
+
+```
+curl -X POST "$DASH_URL/api/ingest?path=drafts/2026-11-05.json" \
+  -H "Authorization: Bearer $INGEST_TOKEN" --data-binary @drafts/2026-11-05.json
+```
+
+Allowed paths: `drafts/DATE.json`, `lp/creators_DATE.csv`, `lp/top_videos_links_DATE.csv`, `ranking/DATE.csv`, `goals/goals.json`.
+Drafts are forced to unapproved, drafts for channels outside the roster are dropped, anything mentioning pay/base/$ is
+flagged + blanked, and drafts you already approved/skipped are never overwritten. Grok Bot must not send to Discord itself;
+the worker is the only sender.
 
 ## Wiring your existing bot
 
