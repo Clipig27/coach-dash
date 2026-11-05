@@ -18,6 +18,7 @@ export interface Draft {
   approvedText?: string;   // exact text approved (post-edit)
   approvedAt?: string;
   sentAt?: string;
+  ingestedAt?: string;     // when Grok Bot uploaded it; live msgs after this = draft may be stale
 }
 
 export interface CreatorLP {

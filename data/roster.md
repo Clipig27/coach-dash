@@ -1,12 +1,12 @@
 # creator | discord-channel (41). Names must match LP/ranking CSVs exactly.
 Andrea To | andrea-to
 Shlok Verma | shlok-verma
-Victor Arg | victor-arg
+Victor Argolo | victor-arg
 Ayesha Khan | ayesha-khan
-Karam Aboul-Hosn | karam-aboul-hosn
+Karam Aboul Hosn | karam-aboul-hosn
 Pratham Joshi | pratham-joshi
 Brian Mualim | brian-mualim
-Sebastian Meijas | sebastian-meijas
+Sebastian Mejias | sebastian-meijas
 Breonna Dagri | breonna-dagri
 Andrew Hasley | andrew-hasley
 Haadi Tariq | haadi-tariq

@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import Papa from "papaparse";
 import type { Draft, ApprovedSend, CreatorLP, Goals, RankingRow } from "./types";
+import type { Live } from "./thread";
 
 const DATA = path.join(process.cwd(), "data");
 
@@ -86,6 +87,18 @@ export async function enqueue(sends: Omit<ApprovedSend, "id" | "approvedAt" | "s
   }));
   await saveQueue([...q, ...added]);
   return added;
+}
+
+// ---------- live Discord threads (pushed by the worker) ----------
+export async function getLive(): Promise<Live> {
+  const empty: Live = { updatedAt: null, channels: {} };
+  if (hasKV) return (await kvGet<Live>("live")) ?? empty;
+  return readJSON<Live>("live.json", empty);
+}
+
+export async function saveLive(live: Live): Promise<void> {
+  if (hasKV) return kvSet("live", live);
+  writeJSON("live.json", live);
 }
 
 // ---------- read-only daily artifacts ----------

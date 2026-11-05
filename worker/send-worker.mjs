@@ -94,10 +94,79 @@ async function tick() {
   }
 }
 
+// ---------- live read: last 30 msgs of each mapped channel -> dashboard ----------
+// Needs the bot to have View Channel + Read Message History, and Message Content Intent
+// turned on (Developer Portal -> Bot), otherwise message text comes back empty.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let selfId = null;
+let syncing = false;
+
+async function readChannel(id) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`https://discord.com/api/v10/channels/${id}/messages?limit=30`, {
+      headers: { Authorization: `Bot ${BOT}` },
+    });
+    if (res.status === 429) {
+      const body = await res.json().catch(() => ({}));
+      await sleep((body.retry_after ?? 1) * 1000);
+      continue;
+    }
+    if (!res.ok) {
+      console.error(`read ${res.status} for channel ${id}`);
+      return null;
+    }
+    return res.json();
+  }
+  return null;
+}
+
+async function sync() {
+  if (syncing) return;
+  syncing = true;
+  try {
+    const channels = {};
+    for (const [name, id] of Object.entries(MAP)) {
+      if (name === "_comment") continue;
+      const msgs = await readChannel(id);
+      if (msgs) {
+        channels[name] = msgs.reverse().map((m) => ({
+          id: m.id,
+          authorId: m.author.id,
+          author: m.author.global_name ?? m.author.username,
+          bot: Boolean(m.author.bot),
+          self: m.author.id === selfId,
+          content: m.content ?? "",
+          ts: m.timestamp,
+          attachments: (m.attachments ?? []).map((a) => ({ name: a.filename, type: a.content_type ?? "", url: a.url })),
+        }));
+      }
+      await sleep(250);
+    }
+    const res = await fetch(`${DASH}/api/live`, {
+      method: "POST",
+      headers: { "x-worker-token": WORKER_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ channels }),
+    });
+    if (!res.ok) console.error(`live push failed: ${res.status}`);
+  } catch (e) {
+    console.error(`sync error: ${e.message}`);
+  } finally {
+    syncing = false;
+  }
+}
+
 if (!BOT) {
   console.error("DISCORD_BOT_TOKEN not set");
   process.exit(1);
 }
+const me = await fetch("https://discord.com/api/v10/users/@me", { headers: { Authorization: `Bot ${BOT}` } });
+if (!me.ok) {
+  console.error(`bot token rejected by Discord: ${me.status}`);
+  process.exit(1);
+}
+selfId = (await me.json()).id;
 console.log(`worker polling ${DASH} every 15s, ${Object.keys(MAP).filter((k) => k !== "_comment").length} channels allowed`);
 setInterval(tick, 15_000);
 tick();
+setInterval(sync, 60_000);
+sync();

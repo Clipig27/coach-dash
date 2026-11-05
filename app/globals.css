@@ -87,3 +87,20 @@ th { color: var(--muted); font-weight: 600; }
 .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; border:1px solid var(--border); color: var(--muted); }
 .pill.red { color: var(--red); border-color: var(--red); }
 .pill.green { color: var(--green); border-color: var(--green); }
+
+/* live thread on each card */
+.card.done { opacity: 0.55; }
+.card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 10px 0 4px; }
+.thread { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+.msg { padding: 5px 0 5px 8px; border-left: 2px solid transparent; }
+.msg + .msg { border-top: 1px solid var(--border); }
+.msg .who { font-weight: 600; font-size: 12px; }
+.msg .time { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.msg .body { font-size: 13px; line-height: 1.45; white-space: pre-wrap; margin-top: 1px; }
+.msg .files { color: var(--muted); margin-left: 4px; }
+.msg.mine .who { color: var(--accent); }
+.msg.open { border-left-color: var(--yellow); }
+.note { font-size: 12px; margin-top: 6px; }
+.note.ok { color: var(--green); }
+.note.warn { color: var(--yellow); }
+.note.bad { color: var(--red); }

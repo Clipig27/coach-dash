@@ -5,6 +5,7 @@ import crypto from "crypto";
 import Papa from "papaparse";
 import { getDrafts, saveDrafts, getRoster } from "@/lib/store";
 import type { Draft, Tab } from "@/lib/types";
+import { PAY } from "@/lib/rules";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +33,6 @@ const KINDS: { re: RegExp; kind: "drafts" | "goals" | keyof typeof CSV_HEADERS }
 ];
 
 const TABS: Tab[] = ["respond_now", "needs_you_first", "missed_yesterday", "at_risk"];
-
-// Hard rule: pay/base/$ questions are never auto-drafted. Anything that smells like pay
-// gets flagged and its draft blanked, even if the bot didn't flag it.
-const PAY = /\$|\bpay(s|ing|out|outs|ment|ments)?\b|\bpaid\b|\bbase\b|\brates?\b|\binvoice\b|\bcompensation\b/i;
 
 function authorized(req: NextRequest): boolean {
   const token = process.env.INGEST_TOKEN;
@@ -101,6 +98,7 @@ async function ingestDrafts(date: string, body: string) {
   const channels = new Set(getRoster().map((r) => r.channel));
   const existing = new Map((await getDrafts(date)).map((d) => [d.id, d]));
   const rejected: string[] = [];
+  const now = new Date().toISOString();
   let payFlagged = 0;
   const out: Draft[] = [];
 
@@ -134,7 +132,9 @@ async function ingestDrafts(date: string, body: string) {
       // the bot can never mark something approved or sent; only my Approve does that
       approved: false,
       sent: false,
+      ingestedAt: now,
     };
+    // Hard rule: pay/base/$ questions are never auto-drafted, even if the bot didn't flag them.
     if (d.flags.includes("pay_question") || PAY.test(`${d.trigger} ${d.summary} ${d.draft}`)) {
       if (!d.flags.includes("pay_question")) d.flags.push("pay_question");
       d.draft = "";

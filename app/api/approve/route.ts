@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDrafts, saveDrafts, enqueue, today } from "@/lib/store";
+import { getDrafts, saveDrafts, enqueue, today, getLive } from "@/lib/store";
+import { PAY, PLACEHOLDER } from "@/lib/rules";
+import { markStaff, threadState } from "@/lib/thread";
 import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +24,7 @@ export async function POST(req: NextRequest) {
   if (Array.isArray(body.channels)) {
     const text = String(body.text ?? "").trim();
     if (!text) return NextResponse.json({ error: "empty text" }, { status: 400 });
+    if (PLACEHOLDER.test(text)) return NextResponse.json({ error: "fill in the [brackets] first" }, { status: 400 });
     const channels: string[] = body.channels.filter(CHANNEL_ALLOW);
     const blocked = body.channels.filter((c: string) => !CHANNEL_ALLOW(c));
     const added = await enqueue(channels.map((channel) => ({ channel, text })));
@@ -40,6 +43,13 @@ export async function POST(req: NextRequest) {
   }
   const text = String(body.text ?? d.draft).trim();
   if (!text) return NextResponse.json({ error: "empty text" }, { status: 400 });
+  if (PLACEHOLDER.test(text)) return NextResponse.json({ error: "fill in the [brackets] first" }, { status: 400 });
+  // Live check: if their latest unanswered Discord msgs ask about pay, it's yours to answer.
+  const live = markStaff(await getLive(), (process.env.COACH_DISCORD_IDS ?? "").split(",").filter(Boolean));
+  const { unanswered } = threadState(live.channels[d.channel]);
+  if (unanswered.some((m) => PAY.test(m.content))) {
+    return NextResponse.json({ error: "their latest msg asks about pay, answer yourself" }, { status: 403 });
+  }
 
   d.approved = true;
   d.approvedText = text;
