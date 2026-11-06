@@ -95,7 +95,8 @@ async function ingestDrafts(date: string, body: string) {
   }
   if (!Array.isArray(incoming)) return bad("drafts file must be an array");
 
-  const channels = new Set(getRoster().map((r) => r.channel));
+  // roster.md is the source of truth for names; the bot's spelling can drift
+  const names = new Map(getRoster().map((r) => [r.channel, r.creator]));
   const existing = new Map((await getDrafts(date)).map((d) => [d.id, d]));
   const rejected: string[] = [];
   const now = new Date().toISOString();
@@ -104,7 +105,7 @@ async function ingestDrafts(date: string, body: string) {
 
   for (const raw of incoming as Partial<Draft>[]) {
     const channel = String(raw?.channel ?? "");
-    if (!channels.has(channel)) {
+    if (!names.has(channel)) {
       rejected.push(channel || "(no channel)");
       continue;
     }
@@ -121,7 +122,7 @@ async function ingestDrafts(date: string, body: string) {
     const d: Draft = {
       id,
       date,
-      creator: String(raw.creator ?? ""),
+      creator: names.get(channel)!,
       channel,
       channelId: raw.channelId ? String(raw.channelId) : undefined,
       trigger: String(raw.trigger ?? ""),
