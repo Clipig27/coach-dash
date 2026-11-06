@@ -112,7 +112,7 @@ async function readChannel(id) {
       continue;
     }
     if (!res.ok) {
-      console.error(`read ${res.status} for channel ${id}`);
+      console.error(`read ${res.status} for channel ${id}: ${(await res.text()).slice(0, 120)}`);
       return null;
     }
     return res.json();

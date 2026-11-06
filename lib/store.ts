@@ -60,6 +60,21 @@ export async function getDrafts(date = today()): Promise<Draft[]> {
   return readJSON<Draft[]>(`drafts/${date}.json`, []);
 }
 
+// Newest drafts date on or before `max` (so after midnight the queue keeps showing
+// yesterday's drafts until Grok Bot's 8am upload lands).
+export function latestDraftsDate(max = today()): string | null {
+  try {
+    const dates = fs
+      .readdirSync(path.join(DATA, "drafts"))
+      .map((f) => f.match(/^(\d{4}-\d{2}-\d{2})\.json$/)?.[1])
+      .filter((d): d is string => Boolean(d) && d! <= max)
+      .sort();
+    return dates.at(-1) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveDrafts(drafts: Draft[], date = today()): Promise<void> {
   if (hasKV) return kvSet(`drafts:${date}`, drafts);
   writeJSON(`drafts/${date}.json`, drafts);

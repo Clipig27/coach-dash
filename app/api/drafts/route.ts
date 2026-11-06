@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDrafts, saveDrafts, sortByChannelOrder, today } from "@/lib/store";
+import { getDrafts, saveDrafts, sortByChannelOrder, today, latestDraftsDate } from "@/lib/store";
 import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +8,17 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const denied = requireAdmin(req);
   if (denied) return denied;
-  const date = req.nextUrl.searchParams.get("date") ?? today();
-  const drafts = await getDrafts(date);
-  return NextResponse.json({ date, drafts: sortByChannelOrder(drafts) });
+  const asked = req.nextUrl.searchParams.get("date");
+  let date = asked ?? today();
+  let drafts = await getDrafts(date);
+  if (!asked && !drafts.length) {
+    const latest = latestDraftsDate(date);
+    if (latest) {
+      date = latest;
+      drafts = await getDrafts(date);
+    }
+  }
+  return NextResponse.json({ date, today: today(), drafts: sortByChannelOrder(drafts) });
 }
 
 // PATCH /api/drafts  { id, draft?, tab? } -> edit a draft in place (no send)

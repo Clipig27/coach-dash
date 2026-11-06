@@ -44,6 +44,7 @@ export default function Queue() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [tab, setTab] = useState<Tab>("respond_now");
   const [date, setDate] = useState("");
+  const [todayET, setTodayET] = useState("");
   const [bulkText, setBulkText] = useState(
     "hey what posts u getting out today? also OH is today from 8-9PM EST can u come?"
   );
@@ -63,6 +64,7 @@ export default function Queue() {
       return body.drafts.map((d: Draft) => (dirty.current.has(d.id) && local.has(d.id) ? { ...d, draft: local.get(d.id)!.draft } : d));
     });
     setDate(body.date);
+    setTodayET(body.today);
   }
 
   async function loadLive() {
@@ -108,7 +110,7 @@ export default function Queue() {
     await fetch("/api/drafts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: d.id, draft: d.draft }),
+      body: JSON.stringify({ id: d.id, date: d.date, draft: d.draft }),
     });
   }
 
@@ -117,7 +119,7 @@ export default function Queue() {
     const res = await fetch("/api/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: d.id, text: d.draft }),
+      body: JSON.stringify({ id: d.id, date: d.date, text: d.draft }),
     });
     setBusy(null);
     if (res.ok) {
@@ -135,7 +137,7 @@ export default function Queue() {
     await fetch("/api/drafts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: d.id, tab: "skipped" }),
+      body: JSON.stringify({ id: d.id, date: d.date, tab: "skipped" }),
     });
   }
 
@@ -174,7 +176,9 @@ export default function Queue() {
           </button>
         ))}
         <span className="status">
-          {date} · Discord synced {ago(live.updatedAt)}
+          {date && todayET && date !== todayET ? `showing ${date} drafts (today's not uploaded yet)` : date} · Discord synced{" "}
+          {ago(live.updatedAt)}
+          {live.updatedAt && !Object.keys(live.channels).length && " (0 channels readable, check bot perms)"}
         </span>
       </div>
 
