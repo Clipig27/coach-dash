@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDrafts, saveDrafts, enqueue, today, getLive } from "@/lib/store";
+import { getDrafts, saveDrafts, enqueue, today, getLive, getRoster } from "@/lib/store";
 import { PAY, PLACEHOLDER } from "@/lib/rules";
 import { markStaff, threadState } from "@/lib/thread";
+import { sendableChannelId } from "@/lib/channels";
 import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-// Guardrails baked into the approve path itself.
-const CHANNEL_ALLOW = (ch: string) =>
-  // only creator channels; never admin/management channels
-  !/admin|management|mgmt|coaches|bts|announcement/i.test(ch);
-
 // POST /api/approve
-// Single:  { id, text }            -> approves one draft with the EXACT edited text
+// Single:  { id, date, text }            -> approves one draft with the EXACT edited text
 // Bulk:    { channels: string[], text }  -> same approved text to a named channel list, one confirmation
+// Approving only queues the text (status "approved"); Grok Bot picks it up from /api/approved-sends.
 export async function POST(req: NextRequest) {
   const denied = requireAdmin(req);
   if (denied) return denied;
@@ -25,36 +22,42 @@ export async function POST(req: NextRequest) {
     const text = String(body.text ?? "").trim();
     if (!text) return NextResponse.json({ error: "empty text" }, { status: 400 });
     if (PLACEHOLDER.test(text)) return NextResponse.json({ error: "fill in the [brackets] first" }, { status: 400 });
-    const channels: string[] = body.channels.filter(CHANNEL_ALLOW);
-    const blocked = body.channels.filter((c: string) => !CHANNEL_ALLOW(c));
-    const added = await enqueue(channels.map((channel) => ({ channel, text })));
+    const names = new Map(getRoster().map((r) => [r.channel, r.creator]));
+    const ok = (c: string) => names.has(c) && sendableChannelId(c) !== null;
+    const channels: string[] = body.channels.filter(ok);
+    const blocked = body.channels.filter((c: string) => !ok(c));
+    const added = await enqueue(
+      channels.map((channel) => ({ channel, channelId: sendableChannelId(channel)!, creator: names.get(channel), text }))
+    );
     return NextResponse.json({ ok: true, queued: added.length, blocked });
   }
 
   const drafts = await getDrafts(date);
   const d = drafts.find((x) => x.id === body.id);
   if (!d) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (!CHANNEL_ALLOW(d.channel)) {
+  const channelId = sendableChannelId(d.channel);
+  if (!channelId || !getRoster().some((r) => r.channel === d.channel)) {
     return NextResponse.json({ error: "channel not allowed" }, { status: 403 });
   }
-  // Pay questions are answered by the coach directly, never queued from a draft.
-  if (d.flags?.includes("pay_question")) {
-    return NextResponse.json({ error: "pay question, answer yourself" }, { status: 403 });
-  }
+  if (d.approved && !d.sendError) return NextResponse.json({ error: "already approved" }, { status: 409 });
+
   const text = String(body.text ?? d.draft).trim();
   if (!text) return NextResponse.json({ error: "empty text" }, { status: 400 });
   if (PLACEHOLDER.test(text)) return NextResponse.json({ error: "fill in the [brackets] first" }, { status: 400 });
-  // Live check: if their latest unanswered Discord msgs ask about pay, it's yours to answer.
+
+  // Pay questions: never send Grok's text. Only a reply I wrote myself can go out.
+  const manual = text !== (d.botDraft ?? d.draft).trim() && text !== d.blockedText;
   const live = markStaff(await getLive(), (process.env.COACH_DISCORD_IDS ?? "").split(",").filter(Boolean));
-  const { unanswered } = threadState(live.channels[d.channel]);
-  if (unanswered.some((m) => PAY.test(m.content))) {
-    return NextResponse.json({ error: "their latest msg asks about pay, answer yourself" }, { status: 403 });
+  const payLive = threadState(live.channels[d.channel]).unanswered.some((m) => PAY.test(m.content));
+  if ((d.flags?.includes("pay_question") || payLive) && !manual) {
+    return NextResponse.json({ error: "pay question: write the reply yourself, then approve" }, { status: 403 });
   }
 
   d.approved = true;
   d.approvedText = text;
   d.approvedAt = now;
+  d.sendError = undefined;
   await saveDrafts(drafts, date);
-  await enqueue([{ channel: d.channel, channelId: d.channelId, text }]);
+  await enqueue([{ draftId: d.id, date, creator: d.creator, channel: d.channel, channelId, text }]);
   return NextResponse.json({ ok: true, queued: 1 });
 }

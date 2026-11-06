@@ -1,4 +1,4 @@
-// Live Discord thread for one creator channel, synced by the worker.
+// Live Discord thread for one creator channel, pushed by Grok Bot to /api/live.
 
 export interface LiveMsg {
   id: string;

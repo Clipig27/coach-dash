@@ -30,8 +30,12 @@ export async function PATCH(req: NextRequest) {
   const drafts = await getDrafts(date);
   const d = drafts.find((x) => x.id === body.id);
   if (!d) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (typeof body.draft === "string") d.draft = body.draft;
-  if (body.tab) d.tab = body.tab;
+  if (d.approved && !d.sendError) return NextResponse.json({ error: "already approved" }, { status: 409 });
+  if (typeof body.draft === "string") {
+    if (d.botDraft === undefined) d.botDraft = d.draft; // drafts uploaded before botDraft existed
+    d.draft = body.draft;
+  }
+  if (["respond_now", "needs_you_first", "missed_yesterday", "at_risk", "skipped"].includes(body.tab)) d.tab = body.tab;
   await saveDrafts(drafts, date);
   return NextResponse.json({ ok: true, draft: d });
 }

@@ -104,3 +104,4 @@ th { color: var(--muted); font-weight: 600; }
 .note.ok { color: var(--green); }
 .note.warn { color: var(--yellow); }
 .note.bad { color: var(--red); }
+.status.bad { color: var(--red); }

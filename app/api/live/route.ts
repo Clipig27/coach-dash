@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLive, saveLive, getRoster } from "@/lib/store";
-import { requireAdmin, requireWorker } from "@/lib/auth";
+import { requireAdmin, requireGrok } from "@/lib/auth";
 import { markStaff, type LiveMsg } from "@/lib/thread";
 
 export const dynamic = "force-dynamic";
@@ -14,15 +14,17 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(markStaff(await getLive(), coachIds()));
 }
 
-// POST /api/live { channels: { name: LiveMsg[] } } -> worker pushes a fresh read of each channel
+// POST /api/live (Authorization: Bearer $INGEST_TOKEN)
+//   { channels: { "<channel>": [{ id, authorId, author, bot, content, ts, attachments: [{ name, type, url }] }] } }
+// Grok Bot pushes the latest messages per creator channel (oldest -> newest). Only roster channels are kept.
 export async function POST(req: NextRequest) {
-  const denied = requireWorker(req);
+  const denied = requireGrok(req);
   if (denied) return denied;
   const body = await req.json();
   const allowed = new Set(getRoster().map((r) => r.channel));
   const live = await getLive();
   for (const [ch, msgs] of Object.entries(body.channels ?? {})) {
-    if (allowed.has(ch) && Array.isArray(msgs)) live.channels[ch] = (msgs as LiveMsg[]).slice(-30);
+    if (allowed.has(ch) && Array.isArray(msgs)) live.channels[ch] = (msgs as LiveMsg[]).slice(-30).map((m) => ({ ...m, attachments: Array.isArray(m.attachments) ? m.attachments : [], content: String(m.content ?? "") }));
   }
   live.updatedAt = new Date().toISOString();
   await saveLive(live);

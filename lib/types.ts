@@ -19,6 +19,9 @@ export interface Draft {
   approvedAt?: string;
   sentAt?: string;
   ingestedAt?: string;     // when Grok Bot uploaded it; live msgs after this = draft may be stale
+  botDraft?: string;       // Grok's original text (pay drafts: ""), to tell manual rewrites apart
+  blockedText?: string;    // Grok's auto pay answer that was blanked; approve refuses this exact text
+  sendError?: string;      // Grok Bot reported this send failed; card can be re-approved
 }
 
 export interface CreatorLP {
@@ -39,14 +42,20 @@ export interface Goals {
   };
 }
 
+export type SendStatus = "approved" | "sent" | "failed";
+
 export interface ApprovedSend {
   id: string;
+  draftId?: string;        // unset for bulk sends
+  date?: string;
+  creator?: string;
   channel: string;
   channelId?: string;
   text: string;
+  status: SendStatus;
   approvedAt: string;
-  sent: boolean;
   sentAt?: string;
+  error?: string;
 }
 
 export interface RankingRow {

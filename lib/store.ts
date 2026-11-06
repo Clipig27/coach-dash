@@ -3,6 +3,7 @@
 // move to Vercel KV automatically (filesystem is read-only / ephemeral in serverless).
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import Papa from "papaparse";
 import type { Draft, ApprovedSend, CreatorLP, Goals, RankingRow } from "./types";
 import type { Live } from "./thread";
@@ -80,10 +81,11 @@ export async function saveDrafts(drafts: Draft[], date = today()): Promise<void>
   writeJSON(`drafts/${date}.json`, drafts);
 }
 
-// ---------- approved sends queue ----------
+// ---------- approved sends queue (Grok Bot polls this) ----------
 export async function getQueue(): Promise<ApprovedSend[]> {
-  if (hasKV) return (await kvGet<ApprovedSend[]>("approved_sends")) ?? [];
-  return readJSON<ApprovedSend[]>("approved_sends.json", []);
+  const q = hasKV ? (await kvGet<ApprovedSend[]>("approved_sends")) ?? [] : readJSON<ApprovedSend[]>("approved_sends.json", []);
+  // older entries used `sent: boolean`
+  return q.map((s) => ({ ...s, status: s.status ?? ((s as { sent?: boolean }).sent ? "sent" : "approved") }));
 }
 
 export async function saveQueue(q: ApprovedSend[]): Promise<void> {
@@ -91,20 +93,20 @@ export async function saveQueue(q: ApprovedSend[]): Promise<void> {
   writeJSON("approved_sends.json", q);
 }
 
-export async function enqueue(sends: Omit<ApprovedSend, "id" | "approvedAt" | "sent">[]): Promise<ApprovedSend[]> {
+export async function enqueue(sends: Omit<ApprovedSend, "id" | "approvedAt" | "status">[]): Promise<ApprovedSend[]> {
   const q = await getQueue();
   const now = new Date().toISOString();
-  const added = sends.map((s, i) => ({
+  const added: ApprovedSend[] = sends.map((s) => ({
     ...s,
-    id: `${Date.now()}-${i}`,
+    id: crypto.randomUUID(),
     approvedAt: now,
-    sent: false,
+    status: "approved",
   }));
   await saveQueue([...q, ...added]);
   return added;
 }
 
-// ---------- live Discord threads (pushed by the worker) ----------
+// ---------- live Discord threads (pushed by Grok Bot) ----------
 export async function getLive(): Promise<Live> {
   const empty: Live = { updatedAt: null, channels: {} };
   if (hasKV) return (await kvGet<Live>("live")) ?? empty;

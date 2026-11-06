@@ -1,7 +1,7 @@
 # Coach Dash
 
 Approve UI + daily brief for your Higgsfield cohort. One URL, Discord-ordered cards,
-edit drafts in place, mash Approve, and a worker posts the exact approved text to Discord.
+edit drafts in place, mash Approve, and Grok Bot posts the exact approved text to Discord.
 
 Nothing goes out without your Approve. The approve API hard-blocks any channel whose
 name looks like admin/management/coaches/announcements.
@@ -42,60 +42,48 @@ npm run dev     # http://localhost:3000
 
 ## Deploy to Railway
 
-One repo, two services in one Railway project.
+One service (repo root). Build `npm run build`, start `npm start` (Railway sets `PORT`).
+- Volume at `/app/data`: drafts, send queue, live threads, LP/ranking CSVs, goals.
+- `roster.md` + `discord_channel_order.md` come from the repo and are copied onto the volume on every start.
+- `config/channel_map.json` (channel name -> Discord ID, your 41 only) ships with the repo, outside the volume.
+- Vars: `ADMIN_TOKEN`, `INGEST_TOKEN`. Optional: `GROK_WEBHOOK_URL` + `GROK_WEBHOOK_KEY`, `COACH_DISCORD_IDS`. Leave `KV_REST_API_*` unset.
+- Open `https://<web-domain>/?token=ADMIN_TOKEN` once per browser (or use the login box); it sets a 90-day cookie.
 
-**web** (repo root)
-- Build `npm run build`, start `npm start` (Railway sets `PORT`).
-- Volume mounted at `/app/data`. Drafts, the send queue, LP/ranking CSVs and goals live there.
-- `roster.md` + `discord_channel_order.md` come from the repo and are copied onto the volume on every start, so edit them here and redeploy.
-- Vars: `ADMIN_TOKEN`, `WORKER_TOKEN`, `INGEST_TOKEN`. Leave `KV_REST_API_*` unset.
-- Open `https://<web-domain>/?token=ADMIN_TOKEN` once per browser; it sets a 90-day cookie. Everything else returns 401.
+## Grok Bot API
 
-**worker** (root directory `worker`)
-- Start `npm start`. No volume, no public domain.
-- Vars: `DASH_URL=https://<web-domain>`, `WORKER_TOKEN` (same as web), `DISCORD_BOT_TOKEN`.
+All calls use `Authorization: Bearer $INGEST_TOKEN`. That token can upload data and pick up approved
+messages; it can never approve anything.
 
-## The worker (Discord side)
-
-`worker/send-worker.mjs` polls `GET /api/approved-sends` every 15s and posts each
-message via the Discord API, then marks it sent.
-
-Setup:
-1. Create a bot at discord.com/developers, enable it, invite it to Higgsfield x GOOD Marketing with Send Messages only in your creator channels. Use a BOT token. Do not automate your personal account (self-botting breaks Discord ToS and can get your account banned, which would be a disaster mid-campaign).
-2. Fill `worker/channel_map.json` with channel name -> channel ID for your 41 channels only. The worker refuses anything not in the map, which is your second guardrail on top of the API's channel blocklist.
-3. Run it anywhere that stays on:
-
-```
-cd worker
-DASH_URL=https://your-app.up.railway.app \
-WORKER_TOKEN=... \
-DISCORD_BOT_TOKEN=... \
-node send-worker.mjs
-```
-
-## Grok Bot ingest
-
-After the 8am ET run, Grok Bot uploads each file with `INGEST_TOKEN` (write-only, it can't approve or send):
-
+**Upload daily files** after the 8am ET run, one file per request:
 ```
 curl -X POST "$DASH_URL/api/ingest?path=drafts/2026-11-05.json" \
   -H "Authorization: Bearer $INGEST_TOKEN" --data-binary @drafts/2026-11-05.json
 ```
-
 Allowed paths: `drafts/DATE.json`, `lp/creators_DATE.csv`, `lp/top_videos_links_DATE.csv`, `ranking/DATE.csv`, `goals/goals.json`.
-Drafts are forced to unapproved, drafts for channels outside the roster are dropped, anything mentioning pay/base/$ is
-flagged + blanked, and drafts you already approved/skipped are never overwritten. Grok Bot must not send to Discord itself;
-the worker is the only sender.
+Drafts are forced unapproved, non-roster channels dropped, roster names applied, pay/base/$ drafts flagged + blanked,
+and drafts already approved/skipped are never overwritten.
 
-## Wiring your existing bot
+**Push live threads** (so cards show what creators said), as often as you like:
+```
+POST /api/live  { "channels": { "<channel>": [{ "id", "authorId", "author", "bot", "content", "ts", "attachments": [{ "name", "type", "url" }] }] } }
+```
 
-Your current bot keeps doing collection (chats, LP scrape, drafts). Point it at this app:
-- Write `drafts/YYYY-MM-DD.json` in the shape in `lib/types.ts` (same as your current shape, plus `tab`).
-- It can also read `GET /api/approved-sends` itself instead of running the worker, if it already has Discord access.
+**Send approved messages:**
+```
+GET  /api/approved-sends      -> { "items": [{ "id", "date", "creator", "channel", "channelId", "text" }] }
+POST /api/approved-sends/ack  { "sentIds": ["..."], "failed": [{ "id": "...", "error": "..." }] }
+```
+Post each item's `text` exactly as given to `channelId`, then ack it right away (an un-acked item is handed out
+again on the next poll). `channelId` always comes from `config/channel_map.json`.
+
+**Optional nudge:** with `GROK_WEBHOOK_URL` + `GROK_WEBHOOK_KEY` set, the queue shows "Send All Approved via Grok",
+which POSTs `{ "count": N }` to the webhook with `Authorization: Bearer $GROK_WEBHOOK_KEY`.
 
 ## Hard rules enforced in code
 
 - Approve required before anything is queued. Bulk = one confirm for text + channel list.
-- Channel allowlist: admin/management/coaches/announcement names rejected at the API, and the worker only posts to channels in its explicit map.
-- Pay-flagged drafts can't be approved from the UI.
+- Two channel guardrails: admin/management/coaches/announcement names rejected, and only channels in
+  `config/channel_map.json` are ever handed to Grok Bot, with the ID from that map.
+- Pay questions: Grok's text can't be approved. Only a reply you rewrote yourself can go out (with a confirm).
+- `[CONFIRM: ...]`-style placeholders block approval.
 - Brief page renders no pay rates.

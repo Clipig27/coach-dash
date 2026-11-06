@@ -54,17 +54,36 @@ export default function Queue() {
   const [, setTick] = useState(0);
   // drafts I've typed in but not approved; a background refresh must never overwrite them
   const dirty = useRef<Set<string>>(new Set());
+  // Grok's original text per draft (older uploads have no botDraft field)
+  const original = useRef<Map<string, string>>(new Map());
+  const [grok, setGrok] = useState<{ enabled: boolean; pending: number }>({ enabled: false, pending: 0 });
 
   async function load() {
     const res = await fetch("/api/drafts");
     if (!res.ok) return;
     const body = await res.json();
+    for (const d of body.drafts as Draft[]) {
+      if (!original.current.has(d.id)) original.current.set(d.id, d.botDraft ?? d.draft);
+    }
     setDrafts((prev) => {
       const local = new Map(prev.map((d) => [d.id, d]));
       return body.drafts.map((d: Draft) => (dirty.current.has(d.id) && local.has(d.id) ? { ...d, draft: local.get(d.id)!.draft } : d));
     });
     setDate(body.date);
     setTodayET(body.today);
+  }
+
+  async function loadGrok() {
+    const res = await fetch("/api/grok");
+    if (res.ok) setGrok(await res.json());
+  }
+
+  async function sendViaGrok() {
+    if (!confirm(`Tell Grok Bot to send all ${grok.pending} approved messages now?`)) return;
+    const res = await fetch("/api/grok", { method: "POST" });
+    const body = await res.json();
+    alert(res.ok ? `Grok pinged for ${body.count} messages` : body.error);
+    loadGrok();
   }
 
   async function loadLive() {
@@ -75,8 +94,12 @@ export default function Queue() {
   useEffect(() => {
     load();
     loadLive();
+    loadGrok();
     const a = setInterval(loadLive, 20_000);
-    const b = setInterval(load, 60_000);
+    const b = setInterval(() => {
+      load();
+      loadGrok();
+    }, 30_000);
     const c = setInterval(() => setTick((t) => t + 1), 15_000);
     return () => [a, b, c].forEach(clearInterval);
   }, []);
@@ -87,7 +110,7 @@ export default function Queue() {
     return m;
   }, [drafts, live]);
 
-  const done = (d: Draft) => d.approved || Boolean(threads.get(d.channel)?.answered);
+  const done = (d: Draft) => (d.approved && !d.sendError) || d.sent || Boolean(threads.get(d.channel)?.answered);
   // answered/approved cards sink to the bottom, sidebar order otherwise
   const inTab = useMemo(
     () => drafts.filter((d) => d.tab === tab).sort((a, b) => Number(done(a)) - Number(done(b))),
@@ -114,7 +137,8 @@ export default function Queue() {
     });
   }
 
-  async function approve(d: Draft) {
+  async function approve(d: Draft, pay: boolean) {
+    if (pay && !confirm(`Pay question. Send YOUR reply to #${d.channel}?\n\n"${d.draft.trim()}"`)) return;
     setBusy(d.id);
     const res = await fetch("/api/approve", {
       method: "POST",
@@ -125,8 +149,9 @@ export default function Queue() {
     if (res.ok) {
       dirty.current.delete(d.id);
       setDrafts((ds) =>
-        ds.map((x) => (x.id === d.id ? { ...x, approved: true, approvedText: d.draft } : x))
+        ds.map((x) => (x.id === d.id ? { ...x, approved: true, approvedText: d.draft, sendError: undefined } : x))
       );
+      loadGrok();
     } else {
       alert((await res.json()).error ?? "approve failed");
     }
@@ -160,7 +185,10 @@ export default function Queue() {
     });
     const body = await res.json();
     alert(res.ok ? `Queued ${body.queued} sends${body.blocked?.length ? `, blocked: ${body.blocked.join(", ")}` : ""}` : body.error);
-    if (res.ok) setBulkPicks(new Set());
+    if (res.ok) {
+      setBulkPicks(new Set());
+      loadGrok();
+    }
   }
 
   // bulk candidates: everyone in today's drafts (Discord-ordered already from API)
@@ -181,6 +209,14 @@ export default function Queue() {
           {live.updatedAt && !Object.keys(live.channels).length && " (0 channels readable, check bot perms)"}
         </span>
       </div>
+
+      {grok.enabled && (
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button className="bulk" onClick={sendViaGrok} disabled={!grok.pending}>
+            Send All Approved via Grok ({grok.pending})
+          </button>
+        </div>
+      )}
 
       <div className="bulkbar">
         <strong>Bulk message</strong>
@@ -205,7 +241,11 @@ export default function Queue() {
         const stale = Boolean(d.ingestedAt && t.lastCreator && t.lastCreator.ts > d.ingestedAt && !t.answered);
         const payLive = t.unanswered.some((m) => PAY.test(m.content));
         const placeholder = PLACEHOLDER.test(d.draft);
-        const blocked = d.flags.includes("pay_question") || payLive || placeholder;
+        const pay = d.flags.includes("pay_question") || payLive;
+        // pay questions only go out if I rewrote the reply myself
+        const manual = d.draft.trim() !== "" && d.draft.trim() !== (original.current.get(d.id) ?? "").trim();
+        const locked = d.approved && !d.sendError; // approved and not failed
+        const blocked = placeholder || (pay && !manual);
         return (
           <div className={`card ${done(d) ? "done" : ""}`} key={d.id}>
             <div className="head">
@@ -214,7 +254,7 @@ export default function Queue() {
                 <span className="channel">#{d.channel}</span>
                 {d.flags.map((f) => (
                   <span className="flag" key={f}>
-                    {f === "pay_question" ? "💰 pay question, answer yourself" : f}
+                    {f === "pay_question" ? "💰 pay question, write it yourself" : f}
                   </span>
                 ))}
               </div>
@@ -242,26 +282,28 @@ export default function Queue() {
               <div className="note ok">✓ already replied in Discord at {fmtTime(t.lastReply.ts)}</div>
             )}
             {stale && <div className="note warn">🆕 new message after this draft was written, check it still fits</div>}
-            {payLive && <div className="note bad">💰 their latest message mentions pay, answer it yourself</div>}
+            {payLive && <div className="note bad">💰 their latest message mentions pay, write the reply yourself</div>}
 
             <div className="label">Your reply</div>
             <textarea
               value={d.draft}
               onChange={(e) => edit(d.id, e.target.value)}
               onBlur={() => saveEdit(d)}
-              disabled={d.approved}
+              disabled={locked}
             />
             {placeholder && <div className="note warn">fill in the [brackets] before approving</div>}
             <div className="row">
-              <button className="approve" onClick={() => approve(d)} disabled={d.approved || busy === d.id || blocked}>
-                {d.approved ? "Approved ✓" : "Approve"}
+              <button className="approve" onClick={() => approve(d, pay)} disabled={locked || busy === d.id || blocked}>
+                {d.sent ? "Sent ✓" : locked ? "Approved ✓" : d.sendError ? "Retry" : "Approve"}
               </button>
               {!d.approved && (
                 <button className="skip" onClick={() => skip(d)}>
                   Skip
                 </button>
               )}
-              {d.approved && <span className="status ok">queued for send</span>}
+              {d.sent && d.sentAt && <span className="status ok">sent by Grok {fmtTime(d.sentAt)}</span>}
+              {locked && !d.sent && <span className="status">approved, waiting for Grok to send</span>}
+              {d.sendError && <span className="status bad">send failed: {d.sendError}</span>}
             </div>
           </div>
         );

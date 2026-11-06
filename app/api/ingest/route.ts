@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
 import Papa from "papaparse";
 import { getDrafts, saveDrafts, getRoster } from "@/lib/store";
 import type { Draft, Tab } from "@/lib/types";
 import { PAY } from "@/lib/rules";
+import { requireGrok } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -34,15 +34,6 @@ const KINDS: { re: RegExp; kind: "drafts" | "goals" | keyof typeof CSV_HEADERS }
 
 const TABS: Tab[] = ["respond_now", "needs_you_first", "missed_yesterday", "at_risk"];
 
-function authorized(req: NextRequest): boolean {
-  const token = process.env.INGEST_TOKEN;
-  if (!token) return false; // ingest is off until a token is set
-  const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const a = Buffer.from(got);
-  const b = Buffer.from(token);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
 function writeAtomic(rel: string, body: string) {
   const p = path.join(DATA, rel);
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -55,7 +46,8 @@ function bad(error: string) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const denied = requireGrok(req);
+  if (denied) return denied;
 
   const rel = req.nextUrl.searchParams.get("path") ?? "";
   const match = KINDS.map((k) => ({ ...k, m: rel.match(k.re) })).find((k) => k.m);
@@ -138,10 +130,12 @@ async function ingestDrafts(date: string, body: string) {
     // Hard rule: pay/base/$ questions are never auto-drafted, even if the bot didn't flag them.
     if (d.flags.includes("pay_question") || PAY.test(`${d.trigger} ${d.summary} ${d.draft}`)) {
       if (!d.flags.includes("pay_question")) d.flags.push("pay_question");
+      if (d.draft.trim()) d.blockedText = d.draft.trim(); // Grok's pay answer, never sendable
       d.draft = "";
       d.tab = "needs_you_first";
       payFlagged++;
     }
+    d.botDraft = d.draft; // what Grok wrote, so approve can tell a manual rewrite apart
     out.push(d);
   }
   // keep approved/sent/skipped drafts that the bot's new file no longer lists
